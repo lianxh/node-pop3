@@ -17,11 +17,13 @@ class Pop3Connection extends EventEmitter {
     port,
     tls,
     timeout,
+    tlsOptions,
   }) {
     super();
     this.host = host;
     this.port = port || (tls ? 995 : 110);
     this.tls = tls;
+    this.tlsOptions = tlsOptions || {};
     this.timeout = timeout;
     this._socket = null;
     this._stream = null;
@@ -76,11 +78,8 @@ class Pop3Connection extends EventEmitter {
         });
       }
       if (this.tls) {
-        this._socket = _tls.connect({
-          host,
-          port,
-          socket,
-        });
+        const tlsOptions = Object.assign(this.tlsOptions, {host, port, socket});
+        this._socket = _tls.connect(tlsOptions);
       } else {
         this._socket = socket;
       }

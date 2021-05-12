@@ -1,0 +1,77 @@
+---
+name: Tests
+
+on:
+  push:
+    tags:
+      - '1.*'
+    branches:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    env:
+      MAILNAME: testdomain.local
+      MAIL_PASS: passwd
+      architecture_node: x64
+      MAIL_ADDRESS: someone@testdomain.local
+    strategy:
+      fail-fast: false
+      matrix:
+        tls: [true, false]
+        node: [10.12.0, 11.2.0, 12.0.0, 13.14.0, 14.0.0, 15.7.0]
+        include:
+          - tls: true
+            port: 995
+          - tls: false
+            port: 110
+    runs-on: ubuntu-18.04
+    services:
+      mail:
+        image: virtuasa/docker-mail-devel:latest
+        options: --name=mail
+        ports:
+          - 110:110
+          - 995:995
+        env:
+          MAILNAME: ${{ env.MAILNAME }}
+          MAIL_PASS: ${{ env.MAIL_PASS }}
+          MAIL_ADDRESS: ${{ env.MAIL_ADDRESS }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node }}
+          architecture: ${{ env.architecture_node }}
+      - uses: jsdaniell/create-json@1.1.2
+        with:
+          name: "pop.config.json"
+          json: 
+            '{
+              "user": "${{ env.MAIL_ADDRESS }}",
+              "password": "${{ env.MAIL_PASS }}",
+              "host": "localhost",
+              "tls": ${{ toJSON(matrix.tls) }},
+              "timeout": 50000,
+              "port": ${{ matrix.port }}
+            }'
+      - run: 'docker exec mail bash -c "echo \"Subject: hello\" | sendmail ${{ env.MAIL_ADDRESS }}"'
+      - run: 'docker exec mail env'
+      - run: 'docker exec mail bash -c "ls -la /var/mail/"'
+      - run: 'docker exec mail bash -c "ls -la /var/mail/${{ env.MAILNAME }}"'
+      - run: 'docker exec mail bash -c "ls -la /var/mail/${{ env.MAILNAME }}/someone/"'
+      - run: 'docker exec mail bash -c "ls -la /var/mail/${{ env.MAILNAME }}/someone/new"'
+      - run: 'docker exec mail bash -c "ls -la /var/mail/${{ env.MAILNAME }}/debug/"'
+      - run: 'docker exec mail bash -c "ls -la /var/mail/${{ env.MAILNAME }}/debug/new"'
+      - run: 'docker exec mail bash -c "cat /var/log/mail.log"'
+      - run: 'docker exec mail bash -c "ls /var/log/"'
+      - run: npm --version
+      - run: npm install -g npm@6.14.4
+      - run: npm install
+      - run: npm test
+      - uses: actions/upload-artifact@v2
+        with:
+          path: coverage/
+          name: coverage-${{ matrix.node }}-tls.${{ toJSON(matrix.tls) }}
+          if-no-files-found: error
